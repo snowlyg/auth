@@ -24,7 +24,11 @@ var DefaultAuthorizeHandler = func(context *auth.Context) (*claims.Claims, error
 	authInfo.Provider = provider.GetName()
 	authInfo.UID = strings.TrimSpace(req.Form.Get("login"))
 
-	if tx.Model(context.Auth.AuthIdentityModel).Where(authInfo).Scan(&authInfo).RecordNotFound() {
+	if tx.Model(context.Auth.AuthIdentityModel).Where(
+		map[string]interface{}{
+			"provider": authInfo.Provider,
+			"uid":      authInfo.UID,
+		}).Scan(&authInfo).RecordNotFound() {
 		return nil, auth.ErrInvalidAccount
 	}
 
@@ -66,10 +70,6 @@ var DefaultRegisterHandler = func(context *auth.Context) (*claims.Claims, error)
 	authInfo.Provider = provider.GetName()
 	authInfo.UID = strings.TrimSpace(req.Form.Get("login"))
 
-	if !tx.Model(context.Auth.AuthIdentityModel).Where(authInfo).Scan(&authInfo).RecordNotFound() {
-		return nil, auth.ErrInvalidAccount
-	}
-
 	if authInfo.EncryptedPassword, err = provider.Encryptor.Digest(strings.TrimSpace(req.Form.Get("password"))); err == nil {
 		schema.Provider = authInfo.Provider
 		schema.UID = authInfo.UID
@@ -83,7 +83,11 @@ var DefaultRegisterHandler = func(context *auth.Context) (*claims.Claims, error)
 
 		// create auth identity
 		authIdentity := reflect.New(utils.ModelType(context.Auth.Config.AuthIdentityModel)).Interface()
-		if err = tx.Where(authInfo).FirstOrCreate(authIdentity).Error; err == nil {
+		if err = tx.Where(map[string]interface{}{
+			"provider":           authInfo.Provider,
+			"uid":                authInfo.UID,
+			"encrypted_password": authInfo.EncryptedPassword,
+		}).FirstOrCreate(authIdentity).Error; err == nil {
 			if provider.Config.Confirmable {
 				context.SessionStorer.Flash(context.Writer, req, session.Message{Message: ConfirmFlashMessage, Type: "success"})
 				err = provider.Config.ConfirmMailer(schema.Email, context, authInfo.ToClaims(), currentUser)
